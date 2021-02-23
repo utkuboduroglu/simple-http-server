@@ -5,3 +5,4 @@ programming topics in an applied manner:
 * Network programming
 * Multithreading and thread safety
 * Optimization, algorithms and data structures
+* async io
