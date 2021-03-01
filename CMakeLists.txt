@@ -3,4 +3,4 @@ project(simplehttp)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(simplehttp main.cpp)
+add_executable(simplehttp src/main.cpp src/addr_struct.h)
