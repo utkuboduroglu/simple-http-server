@@ -4,6 +4,14 @@
 #include <cstring>
 #include <netdb.h>
 
+// custom type for socket file descriptors
+using sock_fd = int;
+
+struct recv_pack {
+    sock_fd their_fd;
+    struct sockaddr_storage their_addr;
+};
+
 class addrinfo_t : public addrinfo {
 public:
     addrinfo_t(int family, int socktype, int flags) {

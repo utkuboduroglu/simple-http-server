@@ -6,17 +6,19 @@
 
 #include <iostream>
 #include <string>
+#include <vector>
 #include <cinttypes>
 
-// custom type for socket file descriptors
-using sock_fd = int;
+#include <pthread.h>
+//#include <semaphore.h>
+// maybe we'll need semaphores?
 
 // instead of these macros, read the configs from some config file
 #define APP_PORT    "3490"
 #define BACKLOG     10
-#define MAX_RECV_BUFFER_SIZE 128
 
 #include "addr_struct.h"
+#include "connection_thread.h"
 
 int main() {
     /* Whew. That’s a bit to absorb in one chunk.
@@ -28,11 +30,11 @@ int main() {
      * we want our ip format to be unspecified, (`AF_UNSPEC`)
      * we want a TCP stream (`SOCK_STREAM`)
      * and that we want getaddrinfo to auto-fill our addr (`AI_PASSIVE`) */
-    struct addrinfo_t hints{AF_UNSPEC, SOCK_STREAM, AI_PASSIVE};
+    class addrinfo_t hints{AF_UNSPEC, SOCK_STREAM, AI_PASSIVE};
 
     // does specifying name: NULL default to localhost?
     int success;
-    if ((success = getaddrinfo(NULL, APP_PORT, &hints, &res)) != 0) {
+    if ((success = getaddrinfo(nullptr, APP_PORT, &hints, &res)) != 0) {
         std::cerr << "getaddrinfo failed: " << gai_strerror(success) << '\n';
         return EXIT_FAILURE;
     }
@@ -45,44 +47,41 @@ int main() {
         return EXIT_FAILURE;
     }
 
+    /* just so we can both keep track of our threads
+     * and have a simple LIFO */
+    //std::vector<pthread_t *> thread_lifo;
+
+    // we're initializing a mutex to use with Thread::Communicate io
+    pthread_mutex_init(&Thread::io_mutex, nullptr);
+
     /* Instead of the while loop, if we want concurrent communication with
      * the program, we probably need to split this process to threads */
 
-    // this is just so that the program stops after max_connections times
+    // instead of dying after `max_connections` times, maybe die after
+    // someone hasn't connected after some period of time
     uint8_t max_connections = 16;
     while (max_connections--) {
         listen(sockfd, BACKLOG);
+        // this gets initialized during accept(), no need to
+        // initialize it here
         struct sockaddr_storage their_addr;
         socklen_t addr_size{sizeof their_addr};
+
+        // accept waits for a connect() to be made, so
+        // anything after this line happens after a connect has been made
         sock_fd new_fd = accept(sockfd,
                                 reinterpret_cast<struct sockaddr*>(&their_addr),
                                 &addr_size);
 
-        void* buffer = malloc(MAX_RECV_BUFFER_SIZE);
-        std::memset(buffer, 0, MAX_RECV_BUFFER_SIZE);
+        std::cout << "New thread [" << new_fd << "] connected.\n";
 
-        size_t bytes_recv = recv(new_fd, buffer, MAX_RECV_BUFFER_SIZE, 0);
-        while (bytes_recv > 0) {
-            std::cout << '[' << new_fd << "] "
-                      << (const char*) buffer;
-
-            // let's send out the message we received
-            std::string out_msg{"You said: "};
-            out_msg.append(reinterpret_cast<const char*>(buffer));
-
-            size_t bytes_sent = send(new_fd, out_msg.c_str(), out_msg.size(), 0);
-            if (bytes_sent != out_msg.size()) {
-                std::cerr << "We sent out " <<
-                          bytes_sent << ", expected "
-                          << out_msg.size() << '\n';
-            }
-
-            bytes_recv = recv(new_fd, buffer, MAX_RECV_BUFFER_SIZE, 0);
+        pthread_t thd;
+        if (pthread_create(&thd, nullptr, Thread::Communicate, &new_fd)) {
+            std::cerr << "Thread creation failed!\n";
+            // DON'T CONTINUE; THE NETWORK SOCKET STILL EXISTS!
+            continue;
         }
-
-        std::cout << "Connection closed.\n";
-        close(new_fd);
-        free(buffer);
+        //thread_lifo.push_back(ptr);
     }
 
     freeaddrinfo(res);
