@@ -10,20 +10,16 @@
 #include <cinttypes>
 
 #include <pthread.h>
-//#include <semaphore.h>
-// maybe we'll need semaphores?
 
 // instead of these macros, read the configs from some config file
 #define APP_PORT    "3490"
 #define BACKLOG     10
+#define SERVER_TIMEOUT 600 //timeout in seconds
 
 #include "addr_struct.h"
 #include "connection_thread.h"
 
 int main() {
-    /* Whew. That’s a bit to absorb in one chunk.
-     * Let’s have an example that binds the socket to the host the program
-     * is running on, port 3490 */
     struct addrinfo *res;
 
     /* create a hints object that specifies that
@@ -33,6 +29,9 @@ int main() {
     class addrinfo_t hints{AF_UNSPEC, SOCK_STREAM, AI_PASSIVE};
 
     // does specifying name: NULL default to localhost?
+    /* If node is NULL, then the network address will be set to the loopback interface address */
+    /* (INADDR_LOOPBACK for IPv4 addresses, IN6ADDR_LOOPBACK_INIT for IPv6 address); */
+    /* this is used by applications that intend to communicate with peers running on the same host. */
     int success;
     if ((success = getaddrinfo(nullptr, APP_PORT, &hints, &res)) != 0) {
         std::cerr << "getaddrinfo failed: " << gai_strerror(success) << '\n';
@@ -62,6 +61,7 @@ int main() {
     uint8_t max_connections = 16;
     while (max_connections--) {
         listen(sockfd, BACKLOG);
+
         // this gets initialized during accept(), no need to
         // initialize it here
         struct sockaddr_storage their_addr;
